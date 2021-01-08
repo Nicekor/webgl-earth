@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Graphics Coursework</title>
+    <meta charset="UTF-8" />
+    <script src="./utils/webgl-debug.js"></script>
+    <script src="./utils/glMatrix.js"></script>
+    <script src="./utils/webgl-utils.js"></script>
+
+    <script id="shader-vs" type="x-shader/x-vertex">
+      attribute vec3 aVertexPosition;
+      attribute vec3 aVertexNormal;
+      attribute vec2 aTextureCoordinates;
+      attribute vec3 aVertexColour;
+
+      uniform mat4 uMVMatrix;
+      uniform mat4 uPMatrix;
+      uniform mat3 uNMatrix;
+
+      varying vec2 vTextureCoordinates;
+      varying vec3 vNormalEye;
+      varying vec3 vPositionEye3;
+      varying vec3 vVertexColour;
+
+      void main() {
+        // Get the vertex position in camera/eye coordinates and send to the frag shader
+        vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+        vPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+        // Transform the normal to eye coordinates and send to frag shader
+        vNormalEye = normalize(uNMatrix * aVertexNormal);
+
+        // Transform the geometry
+        vTextureCoordinates = aTextureCoordinates;
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vVertexColour = aVertexColour;
+      }
+    </script>
+
+    <script id="shader-fs" type="x-shader/x-fragment">
+      precision mediump float;
+
+      varying vec2 vTextureCoordinates;
+      varying vec3 vNormalEye;
+      varying vec3 vPositionEye3;
+      varying vec3 vVertexColour;
+
+      uniform vec3 uLightPosition;
+      uniform vec3 uAmbientLightColor;
+      uniform vec3 uDiffuseLightColor;
+      uniform vec3 uSpecularLightColor;
+      uniform sampler2D uSampler;
+
+      const float shininess = 64.0;
+
+      void main() {
+        // Calculate the vector (L) to the light source
+        vec3 vectorToLightSource = normalize(uLightPosition - vPositionEye3);
+
+        // Calculate N dot L for diffuse lighting
+        float diffuseLightWeighting = max(dot(vNormalEye, vectorToLightSource), 0.0);
+
+        // Calculate the reflection vector (R) that is needed for specular light
+        vec3 reflectionVector = normalize(reflect(-vectorToLightSource, vNormalEye));
+
+        // Calculate view vector (V) in eye coordinates as (0.0, 0.0, 0.0) - vPositionEye3
+        vec3 viewVectorEye = -normalize(vPositionEye3);
+        float rdotv = max(dot(reflectionVector, viewVectorEye), 0.0);
+        float specularLightWeighting = pow(rdotv, shininess);
+
+        // Sum up all three reflection components
+        vec3 lightWeighting = uAmbientLightColor + uDiffuseLightColor * diffuseLightWeighting +
+          uSpecularLightColor * specularLightWeighting;
+
+        // Sample the texture
+        vec4 texelColor = texture2D(uSampler, vTextureCoordinates);
+
+        // modulate texel color with lightweigthing and write as final color
+        gl_FragColor = vec4(lightWeighting.rgb * (texelColor.rgb * vVertexColour), texelColor.a);
+      }
+    </script>
+
+    <script src="index.js"></script>
+  </head>
+
+  <body onload="startup();">
+    <canvas id="gl-canvas" width="500" height="500"></canvas>
+    <p id="fps">FPS: --</p>
+  </body>
+</html>
